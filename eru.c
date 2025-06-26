@@ -32,6 +32,7 @@ static void     print_exp(Exp *);
 static Exp     *apply_env(Env *, Exp *);
 static Env     *parse(wchar_t *, Env *);
 static void     print_env(Env *);
+static Exp     *reduce(Env *, Exp *);
 
 /* TODO: make this reallocatable but *not* a linked list */
 #define SYMBOLS_MAX 1<<13
@@ -92,22 +93,24 @@ upto(wchar_t* s, wchar_t delim, wchar_t **rest)
 }
 
 static Exp*
-parse_exp(wchar_t *s)
+parse_exp(wchar_t *s, Env *env)
 {
   Exp *e = eru_malloc(sizeof(Exp));
   wchar_t *rest = 0;
 
   switch (*s) {
+  case L'#':
+    return reduce(env, parse_exp(s+1, env));
   case L'λ':
   case L'\\':
     e->t = LAMBDA;
     e->arg = (void*)intern(upto(s+1, L'.', &rest));
-    e->body = parse_exp(rest);
+    e->body = parse_exp(rest, env);
     break;
   case L'(':
     e->t = APP;
-    e->arg = parse_exp(upto(s+1, L' ', &rest));
-    e->body = parse_exp(upto(rest, L')', &rest));
+    e->arg = parse_exp(upto(s+1, L' ', &rest), env);
+    e->body = parse_exp(upto(rest, L')', &rest), env);
     break;
   default:
     e->t = VAL;
@@ -346,12 +349,10 @@ parse(wchar_t *s, Env *env_begin)
         exp = tmp;
         cell = eru_malloc(sizeof(Env));
         cell->key = name;
-        cell->val =  parse_exp(exp);
+        cell->val = parse_exp(exp, env);
         cell->next = env;
         env = cell;
       }
-      /* puts("---------------"); */
-      /* print_env(env); */
     }
   } while (*rest);
   return env;

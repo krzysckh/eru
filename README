@@ -42,7 +42,7 @@ examples
   1.1 usage
 
     $ ./eru -v bazinga.l
-    eru: Reduced in 5 passes, 4 substitutions. 144 bytes allocated
+    Reduced in 5 passes, 4 substitutions. 144 bytes allocated
     mrow
 
   2. self-referencing factorial with Y combinator
@@ -70,8 +70,35 @@ examples
   2.1 usage
 
     $ ./eru -v Y.l
-    eru: Reduced in 290 passes, 10256 substitutions. 83394360 bytes allocated
+    Reduced in 290 passes, 10256 substitutions. 83394360 bytes allocated
     λf.λx.(f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f x))))))))))))))))))))))))
+
+  3. almost a iota w/ a stupid hack to overcome the naivity of the reducer
+
+    .include lib/cons.l
+    .include lib/comb.l
+    .include lib/math.l
+
+    _rev ← λrev.λl.(((null? (cdr l)) ((cons (car l)) nil)) ((append' (rev (cdr l))) (car l)))
+    rev ← (Y _rev)
+
+    _riota ← λriota.λx.(((zero? x) nil) ((cons x) (riota (pred x))))
+    riota ← (Y _riota)
+
+    _append' ← λappend.λl.λel.(((null? l) ((cons el) nil)) ((cons (car l)) ((append (cdr l)) el)))
+    append' ← (Y _append')
+
+    lst ← #(riota 3)
+    ;;    ^- here's the hack
+    ;;    it evaluates the riota in-place there when parsing the source
+    ;;    because (rev)-ing it makes the reducer go boom
+
+    output ← (rev lst)
+
+  3.1 usage
+
+    $ ./eru iota.l
+    λf.((f λf.λx.(f x)) λf.((f λf.λx.(f (f x))) λf.((f λf.λx.(f (f (f x)))) λx.λx.λy.x)))
 
 obligatory self-deprecation & warnings
 --------------------------------------
