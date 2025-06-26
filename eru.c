@@ -449,7 +449,11 @@ main(int argc, char **argv)
   Env *env = parse(buf, NULL);
 
   Exp *output = get(env, L"output");
-  print_exp(reduce(env, output));
+  if (output) {
+    print_exp(reduce(env, output));
+  } else {
+    fprintf(stderr, "No output declared in %s. Nothing to do.\n", argv[optind]);
+  }
 
   return 0;
 }
