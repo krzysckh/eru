@@ -6,15 +6,8 @@
 #include <unistd.h>
 #include <locale.h>
 #include <wctype.h>
-
-/* TODO: make this reallocatable but *not* a linked list */
-#define SYMBOLS_MAX 1<<13
-
-static char *argv0 = NULL;
-static size_t vflag = 0;
-
-static size_t mem_allocated = 0;
-static wchar_t *intern_pool[SYMBOLS_MAX] = {0};
+#include <limits.h>
+#include <inttypes.h>
 
 typedef enum {
   LAMBDA,
@@ -34,11 +27,32 @@ typedef struct Env {
   struct Env *next;
 } Env;
 
+static wchar_t *read_file(void *, uint8_t);
+static void     print_exp(Exp *);
+static Exp     *apply_env(Env *, Exp *);
+static Env     *parse(wchar_t *, Env *);
+static void     print_env(Env *);
+
+/* TODO: make this reallocatable but *not* a linked list */
+#define SYMBOLS_MAX 1<<13
+
+static char *argv0 = NULL;
+static size_t vflag = 0;
+
+static size_t mem_allocated = 0;
+static wchar_t *intern_pool[SYMBOLS_MAX] = {0};
+
 static inline void *
 eru_malloc(size_t n)
 {
   mem_allocated += n;
   return malloc(n);
+}
+
+static wchar_t *
+unintern(size_t n)
+{
+  return intern_pool[n];
 }
 
 static size_t
@@ -104,8 +118,6 @@ parse_exp(wchar_t *s)
 
   return e;
 }
-
-static void print_exp(Exp*);
 
 /* TODO: find more memory leaks */
 static void
@@ -247,8 +259,6 @@ n_symbols(void)
   return i-1;
 }
 
-static Exp *apply_env(Env *, Exp *);
-
 static Exp *
 reduce(Env *env, Exp *e)
 {
@@ -292,10 +302,23 @@ apply_env(Env *env, Exp *e)
 }
 
 static Env *
-parse(wchar_t *s)
+maybe_parse_macro(size_t name, wchar_t *arg, Env *env)
 {
-  wchar_t *rest = s, *line, *name, *exp, *tmp;
-  Env *env = NULL, *cell;
+  if (name == intern(L".include")) {
+    if (vflag >= 2)
+      fprintf(stderr, "Including %ls\n", arg);
+    return parse(read_file(arg, 1), env);
+  }
+
+  return env;
+}
+
+static Env *
+parse(wchar_t *s, Env *env_begin)
+{
+  wchar_t *rest = s, *line, *exp, *tmp;
+  size_t name;
+  Env *env = env_begin, *cell;
 
   do {
     if (iswspace(*rest)) { /* allow whitespace before declarations */
@@ -315,42 +338,69 @@ parse(wchar_t *s)
 
     line = upto(rest, L'\n', &rest);
     if (wcslen(line) > 0) {
-      name = upto(line, L' ', &tmp);
-      upto(tmp, L' ', &tmp);
-      exp = tmp;
-      cell = eru_malloc(sizeof(Env));
-      cell->key = intern(name);
-      cell->val =  parse_exp(exp);
-      cell->next = env;
-      env = cell;
+      name = intern(upto(line, L' ', &tmp));
+      if ((cell = maybe_parse_macro(name, tmp, env)) != env) {
+        env = cell;
+      } else {
+        upto(tmp, L' ', &tmp);
+        exp = tmp;
+        cell = eru_malloc(sizeof(Env));
+        cell->key = name;
+        cell->val =  parse_exp(exp);
+        cell->next = env;
+        env = cell;
+      }
+      /* puts("---------------"); */
+      /* print_env(env); */
     }
   } while (*rest);
   return env;
 }
 
 
-static wchar_t *
-read_file(char *filename)
+static FILE *
+fwopen(wchar_t *_filename, char *mode)
 {
-  FILE *fp = fopen(filename, "rb+");
+  char buf[PATH_MAX] = {0};
+  mbstate_t bs = {0};
+  FILE *f;
+  const wchar_t *filename = wcsdup(_filename), *view = filename;
+
+  wcsrtombs(buf, &view, wcslen(filename), &bs);
+
+  f = fopen(buf, mode);
+
+  free((void*)filename);
+  return f;
+}
+
+static wchar_t *
+read_file(void *filename, uint8_t wide_name_p)
+{
+  FILE *fp;
   size_t bump = 512, read = 0;
   wchar_t *buf = eru_malloc(bump * sizeof(wchar_t));
+  if (wide_name_p)
+    fp = fwopen(filename, "rb+");
+  else
+    fp = fopen(filename, "rb+");
   while (!feof(fp)) {
     buf[read++] = fgetwc(fp);
     if (read % bump == 0)
       buf = realloc(buf, (read+bump)*sizeof(wchar_t));
   }
   buf[read-1] = 0;
+  fclose(fp);
   return buf;
 }
 
-static __attribute__((unused)) void
+static void
 print_env(Env *e)
 {
   while (e) {
-    printf("[%ls: ", intern_pool[e->key]);
+    fprintf(stderr, "[%ls: ", intern_pool[e->key]);
     _print_exp(e->val, -1);
-    printf("]\n");
+    fprintf(stderr, "]\n");
     e = e->next;
   }
 }
@@ -395,8 +445,8 @@ main(int argc, char **argv)
   if (optind >= argc)
     usage();
 
-  wchar_t *buf = read_file(argv[optind]);
-  Env *env = parse(buf);
+  wchar_t *buf = read_file(argv[optind], 0);
+  Env *env = parse(buf, NULL);
 
   Exp *output = get(env, L"output");
   print_exp(reduce(env, output));
