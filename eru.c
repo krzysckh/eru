@@ -2,15 +2,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <err.h>
 #include <wchar.h>
 #include <unistd.h>
-
 #include <locale.h>
 #include <wctype.h>
 
+/* TODO: make this reallocatable but *not* a linked list */
+#define SYMBOLS_MAX 1<<13
+
 static char *argv0 = NULL;
 static size_t vflag = 0;
+
+static size_t mem_allocated = 0;
+static wchar_t *intern_pool[SYMBOLS_MAX] = {0};
 
 typedef enum {
   LAMBDA,
@@ -20,23 +24,38 @@ typedef enum {
 
 typedef struct Exp {
   exp_t t;
-  void *arg; /* Exp* | char* */
+  void *arg; /* Exp* | size_t (interned name) */
   struct Exp *body;
 } Exp;
 
 typedef struct Env {
-  wchar_t *key;
+  size_t key; /* interned */
   Exp *val;
   struct Env *next;
 } Env;
-
-size_t mem_allocated = 0;
 
 static inline void *
 eru_malloc(size_t n)
 {
   mem_allocated += n;
   return malloc(n);
+}
+
+static size_t
+intern(wchar_t *sym)
+{
+  size_t n = 0;
+  while (1) {
+    if (intern_pool[n]) {
+      if (wcscmp(sym, intern_pool[n]) == 0)
+        return n;
+      else
+        n++;
+    } else {
+      intern_pool[n] = sym;
+      return n;
+    }
+  }
 }
 
 static wchar_t*
@@ -68,7 +87,7 @@ parse_exp(wchar_t *s)
   case L'λ':
   case L'\\':
     e->t = LAMBDA;
-    e->arg = upto(s+1, L'.', &rest);
+    e->arg = (void*)intern(upto(s+1, L'.', &rest));
     e->body = parse_exp(rest);
     break;
   case L'(':
@@ -78,7 +97,7 @@ parse_exp(wchar_t *s)
     break;
   default:
     e->t = VAL;
-    e->arg = s;
+    e->arg = (void*)intern(s);
     e->body = NULL;
     break;
   }
@@ -129,7 +148,7 @@ _print_exp(Exp *e, size_t depth)
   switch (e->t) {
   case LAMBDA:
     fprintf(stderr, "λ");
-    fprintf(stderr, "%ls", (wchar_t*)e->arg);
+    fprintf(stderr, "%ls", intern_pool[(size_t)e->arg]);
     fprintf(stderr, ".");
     _print_exp(e->body, depth+1);
     break;
@@ -141,7 +160,7 @@ _print_exp(Exp *e, size_t depth)
     fprintf(stderr, ")");
     break;
   case VAL:
-    fprintf(stderr, "%ls", (wchar_t*)e->arg);
+    fprintf(stderr, "%ls", intern_pool[(size_t)e->arg]);
     break;
   }
 }
@@ -156,11 +175,9 @@ print_exp(Exp *e)
 static Exp *
 replace(Exp *e, wchar_t *arg, Exp *val)
 {
-  /* if (wcscmp(arg, L"g") == 0) */
-  /*   print_exp(e); */
   switch (e->t) {
   case LAMBDA:
-    if (wcscmp(e->arg, arg) == 0) { /* shadowing */
+    if (e->arg == arg) { /* shadowing */
       return e;
     } else {
       e->body = replace(e->body, arg, val);
@@ -171,7 +188,7 @@ replace(Exp *e, wchar_t *arg, Exp *val)
     e->body = replace(e->body, arg, val);
     return e;
   case VAL:
-    if (wcscmp(e->arg, arg) == 0) {
+    if (e->arg == arg) {
       free_exp(e);
       memcpy(e, dupexp(val), sizeof(Exp));
       /* if (e->t != VAL) */
@@ -180,7 +197,7 @@ replace(Exp *e, wchar_t *arg, Exp *val)
     }
     return e;
   default:
-    errx(1, "wtf %d", e->t);
+    abort();
     return e;
   }
 }
@@ -221,6 +238,15 @@ walk_apply(Exp *e, int *subs)
   }
 }
 
+static size_t
+n_symbols(void)
+{
+  size_t i = 0;
+  while (intern_pool[i++])
+    ;
+  return i-1;
+}
+
 static Exp *apply_env(Env *, Exp *);
 
 static Exp *
@@ -241,7 +267,7 @@ reduce(Env *env, Exp *e)
   } while (subs);
 
   if (vflag)
-    fprintf(stderr, "Reduced in %zu passes, %zu substitutions. %zu bytes allocated\n", n_reduce, n_subst, mem_allocated - mem_was);
+    fprintf(stderr, "Reduced in %zu passes, %zu substitutions. %zu bytes allocated. %zu symbols used.\n", n_reduce, n_subst, mem_allocated - mem_was, n_symbols());
 
   return e;
 }
@@ -252,7 +278,7 @@ apply_env(Env *env, Exp *e)
   while (env) {
     Exp *tmp = eru_malloc(sizeof(Exp)), *app = malloc(sizeof(Exp));
     tmp->t = LAMBDA;
-    tmp->arg = env->key;
+    tmp->arg = (void*)env->key;
     tmp->body = e;
     app->t = APP;
     app->arg = tmp;
@@ -293,7 +319,7 @@ parse(wchar_t *s)
       upto(tmp, L' ', &tmp);
       exp = tmp;
       cell = eru_malloc(sizeof(Env));
-      cell->key = name;
+      cell->key = intern(name);
       cell->val =  parse_exp(exp);
       cell->next = env;
       env = cell;
@@ -322,7 +348,7 @@ static __attribute__((unused)) void
 print_env(Env *e)
 {
   while (e) {
-    printf("[%ls: ", e->key);
+    printf("[%ls: ", intern_pool[e->key]);
     _print_exp(e->val, -1);
     printf("]\n");
     e = e->next;
@@ -330,10 +356,11 @@ print_env(Env *e)
 }
 
 static Exp *
-get(Env *e, wchar_t *name)
+get(Env *e, wchar_t *name_str)
 {
+  size_t name = intern(name_str);
   while (e) {
-    if (wcscmp(name, e->key) == 0)
+    if (name == e->key)
       return e->val;
     e = e->next;
   }
