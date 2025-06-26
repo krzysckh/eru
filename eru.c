@@ -4,10 +4,13 @@
 #include <assert.h>
 #include <err.h>
 #include <wchar.h>
+#include <unistd.h>
 
 #include <locale.h>
+#include <wctype.h>
 
 static char *argv0 = NULL;
+static size_t vflag = 0;
 
 typedef enum {
   LAMBDA,
@@ -23,23 +26,18 @@ typedef struct Exp {
 
 typedef struct Env {
   wchar_t *key;
-  Exp  *val;
+  Exp *val;
   struct Env *next;
 } Env;
 
-#if 0
-static void*
+size_t mem_allocated = 0;
+
+static inline void *
 eru_malloc(size_t n)
 {
-  static size_t all;
-  all += n;
-  void* p = malloc(n);
-  warnx("malloc: %zu (now=%p)", all, p);
-  return p;
+  mem_allocated += n;
+  return malloc(n);
 }
-#endif
-
-#define eru_malloc malloc
 
 static wchar_t*
 upto(wchar_t* s, wchar_t delim, wchar_t **rest)
@@ -68,6 +66,7 @@ parse_exp(wchar_t *s)
 
   switch (*s) {
   case L'λ':
+  case L'\\':
     e->t = LAMBDA;
     e->arg = upto(s+1, L'.', &rest);
     e->body = parse_exp(rest);
@@ -110,8 +109,6 @@ static Exp *
 dupexp(Exp *e)
 {
   Exp *r = eru_malloc(sizeof(Exp));
-  /* printf("will dup: "); */
-  /* print_exp(e); */
   r->t = e->t;
   if (r->t == APP)
     r->arg = dupexp(e->arg);
@@ -131,20 +128,20 @@ _print_exp(Exp *e, size_t depth)
     return;
   switch (e->t) {
   case LAMBDA:
-    printf("λ");
-    printf("%ls", (wchar_t*)e->arg);
-    printf(".");
+    fprintf(stderr, "λ");
+    fprintf(stderr, "%ls", (wchar_t*)e->arg);
+    fprintf(stderr, ".");
     _print_exp(e->body, depth+1);
     break;
   case APP:
-    printf("(");
+    fprintf(stderr, "(");
     _print_exp(e->arg, depth+1);
-    printf(" ");
+    fprintf(stderr, " ");
     _print_exp(e->body, depth+1);
-    printf(")");
+    fprintf(stderr, ")");
     break;
   case VAL:
-    printf("%ls", (wchar_t*)e->arg);
+    fprintf(stderr, "%ls", (wchar_t*)e->arg);
     break;
   }
 }
@@ -153,7 +150,7 @@ static void
 print_exp(Exp *e)
 {
   _print_exp(e, 0);
-  putchar('\n');
+  putc('\n', stderr);
 }
 
 static Exp *
@@ -192,15 +189,7 @@ static Exp *
 apply(Exp *e, Exp *val)
 {
   assert(e->t == LAMBDA);
-  /* printf("apply "); */
-  /* print_exp(val); */
-  /* printf(" to "); */
-  /* print_exp(e); */
-  Exp *e2 = replace(e->body, e->arg, val);
-  /* printf(" returning "); */
-  /* print_exp(e2); */
-  /* puts(""); */
-  return e2;
+  return replace(e->body, e->arg, val);
 }
 
 static Exp *
@@ -238,16 +227,21 @@ static Exp *
 reduce(Env *env, Exp *e)
 {
   int subs = 0;
+  size_t n_reduce = 0, n_subst = 0, mem_was = mem_allocated;
   e = apply_env(env, e);
-  /* print_exp(e); */
-  int i = 0;
   do {
-    /* warnx("REDUCE %d", i++); */
+    if (vflag >= 2) {
+      fprintf(stderr, "Step %zu: ", n_reduce+1);
+      print_exp(e);
+    }
+
     subs = 0;
     walk_apply(e, &subs);
-    /* TODO: verbose flag */
-    /* print_exp(e); */
+    n_reduce++, n_subst += subs;
   } while (subs);
+
+  if (vflag)
+    fprintf(stderr, "Reduced in %zu passes, %zu substitutions. %zu bytes allocated\n", n_reduce, n_subst, mem_allocated - mem_was);
 
   return e;
 }
@@ -278,12 +272,21 @@ parse(wchar_t *s)
   Env *env = NULL, *cell;
 
   do {
-    if (*rest == L';') { /* allow very simple comments */
-      while (*rest && *rest++ != '\n')
-        ;
+    if (iswspace(*rest)) { /* allow whitespace before declarations */
+      while (*rest && iswspace(*rest))
+        rest++;
       continue;
     }
-    while (*rest == L'\n') rest++; /* skip empty lines */
+    if (*rest == L';') { /* allow very simple comments */
+      while (*rest && *rest != L'\n')
+        rest++;
+      continue;
+    }
+    if (*rest == L'\n') {
+      while (*rest == L'\n') rest++; /* skip empty lines */
+      continue;
+    }
+
     line = upto(rest, L'\n', &rest);
     if (wcslen(line) > 0) {
       name = upto(line, L' ', &tmp);
@@ -291,7 +294,6 @@ parse(wchar_t *s)
       exp = tmp;
       cell = eru_malloc(sizeof(Env));
       cell->key = name;
-      /* cell->val = reduce(env, parse_exp(exp)); */
       cell->val =  parse_exp(exp);
       cell->next = env;
       env = cell;
@@ -316,7 +318,7 @@ read_file(char *filename)
   return buf;
 }
 
-static void
+static __attribute__((unused)) void
 print_env(Env *e)
 {
   while (e) {
@@ -339,36 +341,35 @@ get(Env *e, wchar_t *name)
   return NULL;
 }
 
-static void
+static __attribute__((noreturn)) void
 usage(void)
 {
-  fprintf(stderr, "Usage: %s filename\n", argv0);
+  fprintf(stderr, "Usage: %s [-hv] filename\n", argv0);
   exit(1);
 }
 
 int
 main(int argc, char **argv)
 {
+  int opt;
+
   argv0 = *argv;
   setlocale(LC_ALL, "C.UTF-8"); /* wtf */
 
-  if (argc != 2)
+  while ((opt = getopt(argc, argv, "hv")) != -1) {
+    switch (opt) {
+    case 'h': usage(); /* noreturn */
+    case 'v': vflag++; break;
+    default:
+      usage(); /* noreturn */
+    }
+  }
+
+  if (optind >= argc)
     usage();
-  // char *exp = "\\x.\\y.(x y)";
-  // char *exp = "((\\x.x \\x.x) (\\x.x \\x.x))";
-  // char *exp = "(\\x.x \\x.\\y.((\\x.x x) y))";
-  // Exp *e = parse_exp(exp);
-  // print_exp(e);
-  // puts("");
-  // e = reduce(e);
-  /* e = apply(e, ); */
-  /* puts(""); */
-  // print_exp(e);
 
-  wchar_t *buf = read_file(argv[1]);
+  wchar_t *buf = read_file(argv[optind]);
   Env *env = parse(buf);
-
-  /* print_env(env); */
 
   Exp *output = get(env, L"output");
   print_exp(reduce(env, output));

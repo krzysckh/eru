@@ -1,4 +1,92 @@
-uhh
+λ-calculus, but slow
 
-bazinga ← λx.λy.x
-output ← ((bazinga mrow) boo)
+syntax
+------
+
+- a λ abstraction:
+
+    λarg.body
+
+  or
+
+    \arg.body
+
+- a function application
+
+  (func arg)
+
+- a symbolic value
+
+  x
+
+- environment binding of a λ-abstraction or a value to a name
+
+    name ← value
+
+  or
+
+    name <- value
+
+A program is a mixture of all of those. The value bound to the name `output' is reduced and printed to the output.
+You can use the -v (verbose) flag to show the number of passes used.
+You can use the -vv (very verbose) flag to show every single step of reduction.
+
+examples
+--------
+
+  1. bazinga
+
+    bazinga ← λx.λy.x
+    output ← ((bazinga mrow) boo)
+
+  1.1 usage
+
+    $ ./eru -v bazinga.l
+    eru: Reduced in 5 passes, 4 substitutions. 144 bytes allocated
+    mrow
+
+  2. self-referencing factorial with Y combinator
+
+    succ ← λn.λf.λx.(f ((n f) x))
+    pred ← λn.λf.λx.(((n λg.λh.(h (g f))) λ_.x) I)
+
+    0 ← λf.λx.x
+    1 ← (succ 0)
+    4 ← (succ (succ (succ 1)))
+    zero? ← λn.((n λx.false) true)
+
+    I ← λx.x
+    true ← λx.λy.x
+    false ← λx.λy.y
+
+    * ← λm.λn.((m (+ n)) 0)
+    + ← λm.λn.((m succ) n)
+
+    fac' ← λf.λn.(((zero? n) 1) ((* n) (f (pred n))))
+    Y ← λg.(λx.(g (x x)) λx.(g (x x)))
+
+    output ← ((Y fac') 4)
+
+  2.1 usage
+
+    $ ./eru -v Y.l
+    eru: Reduced in 290 passes, 10256 substitutions. 83394360 bytes allocated
+    λf.λx.(f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f x))))))))))))))))))))))))
+
+obligatory self-deprecation & warnings
+--------------------------------------
+
+- the parser sucks. i'll fix it one day.
+
+a ← b
+; this is also okay
+a <- b
+; this is also also okay
+a arrow b
+; but this is not
+a  ← b
+; ^- this whitespace is the reason
+; can you spot the difference? the parser can
+(this is not a curried application over `this'. it's a syntax error. please beware)
+((((while this) is) perfectly) okay)
+((i'm so) sorry)
