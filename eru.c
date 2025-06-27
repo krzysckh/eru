@@ -50,8 +50,8 @@ eru_malloc(size_t n)
   return malloc(n);
 }
 
-static wchar_t *
-unintern(size_t n)
+static inline wchar_t *
+symbol_name(size_t n)
 {
   return intern_pool[n];
 }
@@ -61,8 +61,8 @@ intern(wchar_t *sym)
 {
   size_t n = 0;
   while (1) {
-    if (intern_pool[n]) {
-      if (wcscmp(sym, intern_pool[n]) == 0)
+    if (symbol_name(n)) {
+      if (wcscmp(sym, symbol_name(n)) == 0)
         return n;
       else
         n++;
@@ -163,7 +163,7 @@ _print_exp(Exp *e, size_t depth)
   switch (e->t) {
   case LAMBDA:
     fprintf(stderr, "λ");
-    fprintf(stderr, "%ls", intern_pool[(size_t)e->arg]);
+    fprintf(stderr, "%ls", symbol_name((size_t)e->arg));
     fprintf(stderr, ".");
     _print_exp(e->body, depth+1);
     break;
@@ -175,7 +175,7 @@ _print_exp(Exp *e, size_t depth)
     fprintf(stderr, ")");
     break;
   case VAL:
-    fprintf(stderr, "%ls", intern_pool[(size_t)e->arg]);
+    fprintf(stderr, "%ls", symbol_name((size_t)e->arg));
     break;
   }
 }
@@ -257,7 +257,7 @@ static size_t
 n_symbols(void)
 {
   size_t i = 0;
-  while (intern_pool[i++])
+  while (symbol_name(i++))
     ;
   return i-1;
 }
@@ -395,11 +395,11 @@ read_file(void *filename, uint8_t wide_name_p)
   return buf;
 }
 
-static void
+static __attribute__((unused)) void
 print_env(Env *e)
 {
   while (e) {
-    fprintf(stderr, "[%ls: ", intern_pool[e->key]);
+    fprintf(stderr, "[%ls: ", symbol_name(e->key));
     _print_exp(e->val, -1);
     fprintf(stderr, "]\n");
     e = e->next;
