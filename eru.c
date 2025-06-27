@@ -360,7 +360,7 @@ parse(wchar_t *s, Env *env_begin)
 
 
 static FILE *
-fwopen(wchar_t *_filename, char *mode)
+fwideopen(wchar_t *_filename, char *mode)
 {
   char buf[PATH_MAX] = {0};
   mbstate_t bs = {0};
@@ -382,7 +382,7 @@ read_file(void *filename, uint8_t wide_name_p)
   size_t bump = 512, read = 0;
   wchar_t *buf = eru_malloc(bump * sizeof(wchar_t));
   if (wide_name_p)
-    fp = fwopen(filename, "rb+");
+    fp = fwideopen(filename, "rb+");
   else
     fp = fopen(filename, "rb+");
   while (!feof(fp)) {
