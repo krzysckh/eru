@@ -41,6 +41,7 @@ static char *argv0 = NULL;
 static size_t vflag = 0;
 
 static size_t mem_allocated = 0;
+static size_t mem_freed = 0;
 static wchar_t *intern_pool[SYMBOLS_MAX] = {0};
 
 static inline void *
@@ -122,21 +123,28 @@ parse_exp(wchar_t *s, Env *env)
   return e;
 }
 
-/* TODO: find more memory leaks */
-static void
+/* TODO: this doesn't work. rewrite it */
+static inline void
 free_exp(Exp *e)
 {
+  (void)e;
+  return;
+#if 0
   if (!e)
     return;
+  printf("in free_exp, T=%d\n", e->t);
   if (e->t == APP) {
     free_exp(e->arg);
+    mem_freed += sizeof(e->arg);
     free(e->arg);
   } else {/* We don't deallocate strings */}
 
   if (e->t != VAL) {
     free_exp(e->body);
+    mem_freed += sizeof((void*)e->body);
     free(e->body);
   }
+#endif
 }
 
 static Exp *
@@ -266,7 +274,7 @@ static Exp *
 reduce(Env *env, Exp *e)
 {
   int subs = 0;
-  size_t n_reduce = 0, n_subst = 0, mem_was = mem_allocated;
+  size_t n_reduce = 0, n_subst = 0, mem_was = mem_allocated, free_was = mem_freed;
   e = apply_env(env, e);
   do {
     if (vflag >= 2) {
@@ -279,8 +287,12 @@ reduce(Env *env, Exp *e)
     n_reduce++, n_subst += subs;
   } while (subs);
 
-  if (vflag)
-    fprintf(stderr, "Reduced in %zu passes, %zu substitutions. %zu bytes allocated. %zu symbols used.\n", n_reduce, n_subst, mem_allocated - mem_was, n_symbols());
+  if (vflag) {
+    size_t mem = mem_allocated - mem_was, freed = mem_freed - free_was;
+    (void)freed;
+    /* fprintf(stderr, "Reduced in %zu passes, %zu substitutions. %zu bytes allocated. %zu bytes freed. Delta %zu. %zu symbols used.\n", n_reduce, n_subst, mem, freed, mem-freed, n_symbols()); */
+    fprintf(stderr, "Reduced in %zu passes, %zu substitutions. %zu bytes allocated. %zu symbols used.\n", n_reduce, n_subst, mem, n_symbols());
+  }
 
   return e;
 }
@@ -451,7 +463,8 @@ main(int argc, char **argv)
 
   Exp *output = get(env, L"output");
   if (output) {
-    print_exp(reduce(env, output));
+    output = reduce(env, output);
+    print_exp(output);
   } else {
     fprintf(stderr, "No output declared in %s. Nothing to do.\n", argv[optind]);
   }
