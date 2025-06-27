@@ -27,9 +27,18 @@ syntax
 
     name <- value
 
-A program is a mixture of all of those. The value bound to the name `output' is reduced and printed to the output.
+A program is a mixture of all of those. The value bound to the name `output' is reduced and printed to the standard output.
 You can use the -v (verbose) flag to show the number of passes used.
 You can use the -vv (very verbose) flag to show every single step of reduction.
+Files in lib/ are compiled into the `eru' binary, and can be later included in your program with
+
+  .include basename.l
+
+So, lib/cons.l would be included with
+
+  .include cons.l
+
+The .include directive will try to include a file from your computer, when a given filename is not compiled in.
 
 examples
 --------
@@ -75,9 +84,9 @@ examples
 
   3. almost a iota w/ a stupid hack to overcome the naivity of the reducer
 
-    .include lib/cons.l
-    .include lib/comb.l
-    .include lib/math.l
+    .include cons.l
+    .include comb.l
+    .include math.l
 
     _rev ← λrev.λl.(((null? (cdr l)) ((cons (car l)) nil)) ((append' (rev (cdr l))) (car l)))
     rev ← (Y _rev)

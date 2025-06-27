@@ -4,3 +4,5 @@ vgcore.*
 *.core
 core
 temp.l
+*.o
+lib/libs.c

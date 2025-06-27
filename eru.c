@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,8 @@
 #include <wctype.h>
 #include <limits.h>
 #include <inttypes.h>
+
+extern void *libname2ptr(wchar_t *, size_t *);
 
 typedef enum {
   LAMBDA,
@@ -319,10 +322,23 @@ apply_env(Env *env, Exp *e)
 static Env *
 maybe_parse_macro(size_t name, wchar_t *arg, Env *env)
 {
+  size_t size = 0;
+  uint8_t *p, *buf;
+  wchar_t *f;
   if (name == intern(L".include")) {
     if (vflag >= 2)
       fprintf(stderr, "Including %ls\n", arg);
-    return parse(read_file(arg, 1), env);
+    if ((p = libname2ptr(arg, &size))) {
+      buf = malloc(size+1);
+      f = malloc((size+1) * sizeof(wchar_t));
+      memcpy(buf, p, size);
+      buf[size] = 0;
+      mbstowcs(f, buf, size);
+      free(buf);
+      return parse(f, env);
+    } else {
+      return parse(read_file(arg, 1), env);
+    }
   }
 
   return env;
