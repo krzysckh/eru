@@ -51,10 +51,12 @@ examples
   1.1 usage
 
     $ ./eru -v bazinga.l
-    Reduced in 5 passes, 4 substitutions. 144 bytes allocated
+    Reduced in 5 passes, 4 substitutions. 144 bytes allocated. 7 symbols used.
     mrow
 
-  2. self-referencing factorial with Y combinator
+  2. self-referencing factorial using Y combinator
+
+    .include comb.l
 
     succ ← λn.λf.λx.(f ((n f) x))
     pred ← λn.λf.λx.(((n λg.λh.(h (g f))) λ_.x) I)
@@ -64,50 +66,36 @@ examples
     4 ← (succ (succ (succ 1)))
     zero? ← λn.((n λx.false) true)
 
-    I ← λx.x
-    true ← λx.λy.x
-    false ← λx.λy.y
-
     * ← λm.λn.((m (+ n)) 0)
     + ← λm.λn.((m succ) n)
 
-    fac' ← λf.λn.(((zero? n) 1) ((* n) (f (pred n))))
-    Y ← λg.(λx.(g (x x)) λx.(g (x x)))
+    fac ← (Y λf.λn.(((zero? n) 1) ((* n) (f (pred n)))))
 
-    output ← ((Y fac') 4)
+    output ← (fac 4)
 
   2.1 usage
 
     $ ./eru -v Y.l
-    Reduced in 290 passes, 10256 substitutions. 83394360 bytes allocated
+    Reduced in 290 passes, 10256 substitutions. 83394840 bytes allocated. 23 symbols used.
     λf.λx.(f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f x))))))))))))))))))))))))
 
   3. almost a iota w/ a stupid hack to overcome the naivity of the reducer
 
-    .include cons.l
-    .include comb.l
-    .include math.l
+    .include eru.l
 
-    _rev ← λrev.λl.(((null? (cdr l)) ((cons (car l)) nil)) ((append' (rev (cdr l))) (car l)))
-    rev ← (Y _rev)
+    rev ← (Y λrev.λl.(((null? (cdr l)) ((cons (car l)) nil)) ((append' (rev (cdr l))) (car l))))
+    append' ← (Y λappend'.λl.λel.(((null? l) ((cons el) nil)) ((cons (car l)) ((append' (cdr l)) el))))
+    riota ← (Y λriota.λx.(((zero? x) nil) ((cons x) (riota (pred x)))))
 
-    _riota ← λriota.λx.(((zero? x) nil) ((cons x) (riota (pred x))))
-    riota ← (Y _riota)
-
-    _append' ← λappend.λl.λel.(((null? l) ((cons el) nil)) ((cons (car l)) ((append (cdr l)) el)))
-    append' ← (Y _append')
-
-    lst ← #(riota 3)
-    ;;    ^- here's the hack
-    ;;    it evaluates the riota in-place there when parsing the source
-    ;;    because (rev)-ing it makes the reducer go boom
-
-    output ← (rev lst)
+    output ← (car (rev #(riota 3)))
+    ;;            ^- here's the hack
+    ;;            it evaluates the riota in-place there when parsing the source
+    ;;            because (rev)-ing at the same time makes the reducer go boom
 
   3.1 usage
 
     $ ./eru iota.l
-    λf.((f λf.λx.(f x)) λf.((f λf.λx.(f (f x))) λf.((f λf.λx.(f (f (f x)))) λx.λx.λy.x)))
+    λf.λx.(f x)
 
 obligatory self-deprecation & warnings
 --------------------------------------

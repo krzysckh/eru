@@ -1,3 +1,5 @@
+.include comb.l
+
 0 ← λf.λx.x
 1 ← (succ 0)
 2 ← (succ 1)
@@ -12,4 +14,4 @@ pred ← λn.λf.λx.(((n λg.λh.(h (g f))) λ_.x) I)
 
 zero? ← λn.((n λx.false) true)
 
-fac' ← λf.λn.(((zero? n) 1) ((* n) (f (pred n))))
+fac ← (Y λf.λn.(((zero? n) 1) ((* n) (f (pred n)))))
