@@ -8,6 +8,8 @@
 #include <locale.h>
 #include <wctype.h>
 #include <limits.h>
+#include <errno.h>
+#include <err.h>
 #include <inttypes.h>
 
 extern void *libname2ptr(wchar_t *, size_t *);
@@ -413,6 +415,12 @@ read_file(void *filename, uint8_t wide_name_p)
     fp = fwideopen(filename, "rb+");
   else
     fp = fopen(filename, "rb+");
+  if (!fp)
+    if (wide_name_p)
+      err(errno, "couldn't open %ls", (wchar_t*)filename);
+    else
+      err(errno, "couldn't open %s", (char*)filename);
+
   while (!feof(fp)) {
     buf[read++] = fgetwc(fp);
     if (read % bump == 0)
