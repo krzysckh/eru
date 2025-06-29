@@ -336,6 +336,7 @@ maybe_parse_macro(size_t name, wchar_t *arg, Env *env)
       memcpy(buf, p, size);
       buf[size] = 0;
       mbstowcs(f, buf, size);
+      f[size] = 0;
       free(buf);
       return parse(f, env);
     } else {
@@ -415,11 +416,12 @@ read_file(void *filename, uint8_t wide_name_p)
     fp = fwideopen(filename, "rb+");
   else
     fp = fopen(filename, "rb+");
-  if (!fp)
+  if (!fp) {
     if (wide_name_p)
       err(errno, "couldn't open %ls", (wchar_t*)filename);
     else
       err(errno, "couldn't open %s", (char*)filename);
+  }
 
   while (!feof(fp)) {
     buf[read++] = fgetwc(fp);
