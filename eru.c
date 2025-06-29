@@ -335,7 +335,7 @@ maybe_parse_macro(size_t name, wchar_t *arg, Env *env)
       f = malloc((size+1) * sizeof(wchar_t));
       memcpy(buf, p, size);
       buf[size] = 0;
-      mbstowcs(f, buf, size);
+      mbstowcs(f, (void*)buf, size);
       f[size] = 0;
       free(buf);
       return parse(f, env);
