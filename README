@@ -1,5 +1,19 @@
 λ-calculus, but slow
 
+explicit usage instructions
+---------------------------
+
+1. build
+
+  $ make
+  $ make install # <- this is optional, the binary will show up in $PWD, it'll be called ./eru
+
+2. run examples (see "included examples" part of readme)
+
+  $ ./eru t/bazinga.l
+  $ ./eru t/fac.l
+  $ ./eru t/iota.l
+
 syntax
 ------
 
@@ -40,8 +54,8 @@ So, lib/cons.l would be included with
 
 The .include directive will try to include a file from your computer, when a given filename is not compiled in.
 
-examples
---------
+included examples (see t/)
+--------------------------
 
   1. bazinga
 
@@ -50,7 +64,7 @@ examples
 
   1.1 usage
 
-    $ ./eru -v bazinga.l
+    $ ./eru -v t/bazinga.l
     Reduced in 5 passes, 4 substitutions. 144 bytes allocated. 7 symbols used.
     mrow
 
@@ -75,8 +89,8 @@ examples
 
   2.1 usage
 
-    $ ./eru -v Y.l
-    Reduced in 290 passes, 10256 substitutions. 83394840 bytes allocated. 23 symbols used.
+    $ ./eru -v t/fac.l
+    Reduced in 298 passes, 10264 substitutions. 83394720 bytes allocated. 32 symbols used.
     λf.λx.(f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f x))))))))))))))))))))))))
 
   3. almost a iota w/ a stupid hack to overcome the naivity of the reducer
@@ -94,7 +108,7 @@ examples
 
   3.1 usage
 
-    $ ./eru iota.l
+    $ ./eru t/iota.l
     λf.λx.(f x)
 
 obligatory self-deprecation & warnings
